@@ -1,6 +1,7 @@
 #include "downloader.h"
 
 #include <iostream>
+#include <regex>
 
 Downloader::Downloader() {
   // init libcurl
@@ -35,6 +36,9 @@ bool Downloader::StartDownload(std::string src_uri, std::string dest_filename) {
   curl_easy_setopt(curl_, CURLOPT_URL, src_uri.c_str());
   curl_easy_setopt(curl_, CURLOPT_SSL_VERIFYPEER, 0);
 
+  curl_easy_setopt(curl_, CURLOPT_HEADERFUNCTION, CurlRecieveHeaderCallback);
+  curl_easy_setopt(curl_, CURLOPT_HEADERDATA, this);
+
   curl_easy_setopt(curl_, CURLOPT_WRITEFUNCTION, CurlWriteBufferCallback);
   curl_easy_setopt(curl_, CURLOPT_WRITEDATA, this);
 
@@ -67,27 +71,28 @@ bool Downloader::DeleteDownloadFile() {
 }
 
 // static
-int Downloader::CurlProgressCallback(void* clientp,
-                                     curl_off_t dltotal,
-                                     curl_off_t dlnow,
-                                     curl_off_t ultotal,
-                                     curl_off_t ulnow) {
-  auto self = reinterpret_cast<Downloader*>(clientp);
-  if (!self || dltotal == 0) {
+size_t Downloader::CurlRecieveHeaderCallback(char* buffer,
+                                             size_t size,
+                                             size_t nitems,
+                                             void* userdata) {
+  if (!buffer) {
+    std::cerr << "CurlRecieveHeaderCallback::buffer is null" << std::endl;
     return 0;
   }
 
-  auto progress = self->cache_->UpdateProgress(dltotal, dlnow);
-  if (self->progress_ != progress) {
-    self->progress_ = progress;
-    if (self->handler_) {
-      self->handler_->OnUpdateProgress(progress);
-      if (progress == 100) {
-        self->handler_->OnComplete();
-      }
-    }
+  if (!userdata) {
+    std::cerr << "CurlRecieveHeaderCallback::userdata is null" << std::endl;
+    return 0;
   }
-  return 0;
+
+  auto self = reinterpret_cast<Downloader*>(userdata);
+  static std::regex etag_re("^ETag:");
+  std::string header(buffer, size * nitems);
+  if (std::regex_search(header, etag_re)) {
+    std::cout << header << std::endl;
+  }
+
+  return size * nitems;
 }
 
 // static
@@ -112,4 +117,28 @@ size_t Downloader::CurlWriteBufferCallback(char* buffer,
   }
 
   return size * nmemb;
+}
+
+// static
+int Downloader::CurlProgressCallback(void* clientp,
+                                     curl_off_t dltotal,
+                                     curl_off_t dlnow,
+                                     curl_off_t ultotal,
+                                     curl_off_t ulnow) {
+  auto self = reinterpret_cast<Downloader*>(clientp);
+  if (!self || dltotal == 0) {
+    return 0;
+  }
+
+  auto progress = self->cache_->UpdateProgress(dltotal, dlnow);
+  if (self->progress_ != progress) {
+    self->progress_ = progress;
+    if (self->handler_) {
+      self->handler_->OnUpdateProgress(progress);
+      if (progress == 100) {
+        self->handler_->OnComplete();
+      }
+    }
+  }
+  return 0;
 }

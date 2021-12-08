@@ -20,15 +20,19 @@ class Downloader {
   bool DeleteDownloadFile();
 
  private:
+  static size_t CurlRecieveHeaderCallback(char* buffer,
+                                          size_t size,
+                                          size_t nitems,
+                                          void* userdata);
+  static size_t CurlWriteBufferCallback(char* ptr,
+                                        size_t size,
+                                        size_t nmemb,
+                                        void* userdata);
   static int CurlProgressCallback(void* clientp,
                                   curl_off_t dltotal,
                                   curl_off_t dlnow,
                                   curl_off_t ultotal,
                                   curl_off_t ulnow);
-  static size_t CurlWriteBufferCallback(char* ptr,
-                                        size_t size,
-                                        size_t nmemb,
-                                        void* userdata);
 
   CURL* curl_;
   std::unique_ptr<Cache> cache_;
